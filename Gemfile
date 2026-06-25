@@ -24,6 +24,9 @@ gem "bcrypt", require: false
 gem "doorkeeper-i18n", "~> 5.2"
 gem "requestjs-rails", "~> 0.0.13"
 
+# API rate limiting (Rack::Attack throttling for .json/.xml endpoints, see #43881)
+gem "rack-attack", "~> 6.8"
+
 #  Ruby Standard Gems
 gem 'csv', '~> 3.3.2'
 gem 'net-imap', '~> 0.5.7'
