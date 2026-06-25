@@ -224,6 +224,24 @@ default:
   # false: switches to default common mark where two or more spaces are required
   # common_mark_enable_hardbreaks: true
 
+  # API rate limiting (Rack::Attack)
+  #
+  # Throttles API requests only (paths ending in .json or .xml); the web UI
+  # is never throttled. Requests are keyed by, in priority order:
+  # X-Redmine-API-Key header, ?key= query param, HTTP Basic auth username,
+  # then client IP. When the limit is exceeded a 429 with a JSON body and a
+  # Retry-After header is returned.
+  #
+  #   limit:  maximum number of requests allowed per period (default: 60)
+  #   period: length of the rolling window in seconds        (default: 60)
+  #
+  # NOTE: In production use a shared cache store (Redis/memcached). The default
+  # memory store is per-process, so counters are not shared across workers.
+  #
+  #api_rate_limit:
+  #  limit: 60
+  #  period: 60
+
 # specific configuration options for production environment
 # that overrides the default ones
 production:
