@@ -21,8 +21,9 @@ require_relative '../test_helper'
 
 # Integration test for the API rate limiter (Rack::Attack throttle "api",
 # Redmine issue #43881). It proves: over-limit -> 429 + Retry-After + JSON,
-# under-limit -> 200, the HTML web UI is never throttled, and that two distinct
-# API keys get independent budgets.
+# under-limit -> 200, the HTML web UI is never throttled, that two distinct
+# API keys get independent budgets, and that a throttle appends one JSON line
+# to log/api_audit.log (the rack_attack_audit.rb subscriber).
 class ApiRateLimitTest < Redmine::IntegrationTest
   fixtures :users, :email_addresses, :projects, :issues, :roles, :members,
            :member_roles, :enabled_modules, :issue_statuses, :trackers,
@@ -122,5 +123,33 @@ class ApiRateLimitTest < Redmine::IntegrationTest
     get '/issues.json', :headers => {'X-Redmine-API-Key' => @key2}
     assert_equal 200, response.status,
                  "a different API key must have its own independent budget"
+  end
+
+  # Test 5 (audit log): a throttled API request appends exactly one structured
+  # JSON line to log/api_audit.log, proving the rack_attack_audit.rb subscriber
+  # fires end-to-end on a throttle match (not merely that the file exists). The
+  # subscriber is synchronous (ActiveSupport::Notifications.instrument), so the
+  # line is on disk by the time the throttled request returns.
+  def test_throttle_appends_an_audit_log_line
+    audit_path = Rails.root.join('log', 'api_audit.log')
+    lines_before = File.exist?(audit_path) ? File.foreach(audit_path).count : 0
+
+    # Drive past the limit; the audit subscriber only fires on an actual throttle.
+    last_status = nil
+    (@limit + 5).times do
+      get '/issues.json', :headers => {'X-Redmine-API-Key' => @key}
+      last_status = response.status
+    end
+    assert_equal 429, last_status, "precondition: the request must be throttled"
+
+    lines = File.foreach(audit_path).to_a
+    assert lines.size > lines_before,
+           "expected a new audit line appended to #{audit_path} on throttle"
+
+    entry = JSON.parse(lines.last)
+    assert_equal 'api', entry['throttle']
+    assert_equal '/issues.json', entry['path']
+    assert entry['discriminator'].to_s.start_with?('api-'),
+           "expected a fingerprinted discriminator, got #{entry['discriminator'].inspect}"
   end
 end
