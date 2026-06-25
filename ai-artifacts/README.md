@@ -51,6 +51,38 @@ Each phase produced a transcript here — verbatim prompt + actual output + the 
 independent checks. The phase-by-phase story lives both in *these transcripts* and in git
 history, which carries one commit per phase (see below).
 
+## The AI development loop
+
+Every phase ran through the same closed loop. The orchestrator never accepted a subagent's
+output on trust — it independently verified each result against the slice boundary and only
+advanced when the check passed. A failed check fed back into the same agent with the concrete
+evidence, rather than moving on.
+
+```
+        ┌──────────────────────────────────────────────────────────┐
+        │                                                            │
+        ▼                                                            │
+  ┌───────────┐   delegate   ┌───────────────┐   output   ┌──────────────┐
+  │ ORCHESTRA-│ ───────────► │ FOCUSED AGENT │ ─────────► │  VERIFY      │
+  │ TOR holds │   scoped     │ rails-engineer│            │ run it for   │
+  │ the slice │   task +     │ test-engineer │            │ real: test,  │
+  │ boundary  │   skill      │ docs-writer   │            │ curl, reread │
+  └───────────┘              └───────────────┘            └──────┬───────┘
+        ▲                                                        │
+        │                          fail → feed evidence back     │ pass
+        └────────────────────────────────────────────────────────┤
+                                                                  ▼
+                                                          advance to next phase
+```
+
+**The loop earned its keep in Phase 1.** The verify step ran a live 70-request curl loop and
+saw `200`s the whole way — no `429`. That surfaced a real bug: `Rails.cache` is a `NullStore`
+in Rails development, so throttle counters were silently discarded and the limiter never fired.
+The failed check fed straight back to the rails-engineer, which patched the initializer to fall
+back to a `MemoryStore`; the re-run then showed the `200 → 429` flip. Without the verify-and-
+feed-back loop, a broken limiter would have shipped looking correct. The exchange is recorded
+verbatim in `phase1-ratelimit-core.md`.
+
 ## Artifact checklist
 
 - [x] `phase0-scope-and-setup.md`
